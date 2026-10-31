@@ -32,8 +32,9 @@ solutions.
   gradients and Hessians, per-element PSD projection and per-element material parameters.
 - **Implicit dynamics.** Backward Euler written as incremental-potential minimisation, solved with
   projected Newton, sparse direct solves and an Armijo line search.
-- **Contact that never penetrates.** An IPC log-barrier keeps nodes off rigid planes and spheres.
-  Every Newton step is capped by continuous collision detection, so iterates stay intersection-free.
+- **Node contact without penetration.** An IPC log-barrier keeps every surface node off rigid planes
+  and spheres. Every Newton step is capped by continuous collision detection, and prescribed motions
+  pass the same check, so no node ever crosses an obstacle. Contact is node-based; see Limitations.
 - **Coulomb friction.** IPC's lagged, smoothed friction captures stick, incipient slip and sliding.
 - **Kinematic control.** Any subset of coordinates can follow a function of time: bones, clamps,
   symmetry planes.
@@ -46,7 +47,7 @@ solutions.
 
 | Benchmark | Reference | softfem |
 | --- | --- | --- |
-| Ball pressed on a plane | Hertz: $F=\tfrac43 E^\ast\sqrt{R}\,\delta^{3/2}$ | slope **1.511**; force ratio 1.25 → 1.17 → 1.13 as the mesh is refined (first-order convergence); contact radius within 1% |
+| Ball pressed on a plane | Hertz: $F=\tfrac43 E^\ast\sqrt{R}\,\delta^{3/2}$ | force–indentation slope **1.511** (theory 1.5); contact radius within 1%; force 25% → 17% → 12.6% above Hertz from 3k to 35k tets, so the force is the least accurate of the three |
 | Cantilever under gravity | Euler–Bernoulli $\delta = qL^4/8EI$ | 25% → **96%** of the beam deflection from 132 to 20k DOF, the classic locking of linear tets |
 | Block on an incline | Coulomb: sticks iff $\tan\theta\le\mu$, else $a=g(\sin\theta-\mu\cos\theta)$ | stick/slip threshold at $\tan^{-1}\mu$; acceleration error **< 2·10⁻⁵ m/s²** |
 | Free fall | discrete backward Euler | exact to 10⁻¹⁰ |
@@ -59,7 +60,7 @@ Run `python examples/validation.py` to regenerate the figure and the numbers in 
 ```bash
 git clone https://github.com/Dy07077/softfem && cd softfem
 pip install -e ".[dev]"
-pytest -q                       # 43 tests, a few seconds
+pytest -q                       # 45 tests, a few seconds
 python examples/fingertip.py    # writes assets/fingertip.gif
 ```
 
@@ -106,10 +107,10 @@ $$
 | [`examples/fingertip.py`](examples/fingertip.py) | soft fingertip on a rigid bone: press, drag 16 mm, lift; contact patch, slip front, F<sub>t</sub> → μF<sub>n</sub> | ~4 min |
 | [`examples/drape.py`](examples/drape.py) | soft sheet draping over a rigid ball | ~1 min |
 | [`examples/twist.py`](examples/twist.py) | clamped bar twisted by 1.25 turns | ~1.5 min |
-| [`examples/validation.py`](examples/validation.py) | the validation figure above | ~4 min |
+| [`examples/validation.py`](examples/validation.py) | the validation figure above | ~3 min |
 
-Every script accepts `--quick` for a low-resolution run that takes seconds. Runtimes were measured
-on a laptop CPU.
+Every script accepts `--quick` for a low-resolution run that takes seconds. Runtimes are full runs
+on an Apple-silicon laptop, with NumPy 2.5 and SciPy 1.18 installed by pip.
 
 ## Project layout
 
@@ -126,8 +127,10 @@ softfem/
 
 ## Limitations
 
-- Contact is between mesh nodes and analytic obstacles. Self-contact and body–body contact need
-  IPC's point–triangle and edge–edge distances plus CCD, which is the next step.
+- Contact is between mesh nodes and analytic obstacles. Against a plane that keeps whole faces out
+  too, because a half-space is convex, but edges and faces are not tested against spheres, so a ball
+  small compared with the mesh spacing can pass between nodes. Self-contact and body–body contact
+  need IPC's point–triangle and edge–edge distances plus CCD, which is the next step.
 - Linear tetrahedra are stiff in bending and near incompressibility, as the cantilever plot shows.
   Quadratic or mixed elements would converge faster.
 - The linear solver is SciPy's SuperLU, which is comfortable up to about 50k degrees of freedom.

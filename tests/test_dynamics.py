@@ -51,6 +51,31 @@ def test_sphere_obstacle_is_never_penetrated():
     assert sim.contact_forces()[0][2] > 0.0  # the sheet is resting on the ball
 
 
+def _prescribed_cube_left_of_ball(shift):
+    cube = sf.box((0.1, 0.1, 0.1), (2, 2, 2), origin=(-0.35, -0.05, -0.05))
+    sim = sf.Simulator(cube, sf.StableNeoHookean(1e5, 0.3), dt=0.01, gravity=(0, 0, 0),
+                       obstacles=[sf.Sphere((0.0, 0.0, 0.0), 0.1)])
+    X0 = cube.X.copy()
+    sim.fix(np.arange(cube.n_nodes), lambda t: X0 + np.asarray(shift) * min(t / 0.01, 1.0))
+    return sim, X0
+
+
+def test_prescribed_motion_through_an_obstacle_is_refused():
+    # one step carries the whole cube from one side of the ball to the other: both ends are outside
+    # the ball but the path is not, so the step must be refused and the state left as it was
+    sim, X0 = _prescribed_cube_left_of_ball([0.6, 0.0, 0.0])
+    with pytest.raises(RuntimeError, match="prescribed motion"):
+        sim.step()
+    np.testing.assert_array_equal(sim.x, X0)
+    assert sim.t == 0.0
+
+
+def test_prescribed_motion_that_stops_short_of_an_obstacle_is_allowed():
+    sim, X0 = _prescribed_cube_left_of_ball([0.1, 0.0, 0.0])
+    assert sim.step().converged
+    np.testing.assert_allclose(sim.x, X0 + [0.1, 0.0, 0.0])
+
+
 @pytest.mark.parametrize("theta, sticks", [(10.0, True), (30.0, False)])
 def test_coulomb_friction_on_incline(theta, sticks):
     a_fem, a_theory, slip = incline_acceleration(theta, mu=0.3, duration=0.6)

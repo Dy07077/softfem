@@ -7,8 +7,10 @@ incremental potential, where ``d_i`` is its distance to an obstacle and
     b(d) = -(d - dhat)^2 ln(d / dhat)      for 0 < d < dhat, else 0.
 
 The barrier is C2, convex in ``d`` and unbounded as ``d -> 0``; combined with a
-line search that is filtered by continuous collision detection the iterates
-never penetrate. Friction uses IPC's lagged, smoothed Coulomb potential.
+line search that is filtered by continuous collision detection no node ever
+crosses an obstacle. Contact is node-based: against a plane that keeps whole
+faces out too (a half-space is convex), but edges and faces are not tested
+against spheres. Friction uses IPC's lagged, smoothed Coulomb potential.
 """
 from __future__ import annotations
 

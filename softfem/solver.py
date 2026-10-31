@@ -9,7 +9,9 @@ Each step minimises the incremental potential
 element Hessians are projected to be positive semi-definite, the step is
 capped by continuous collision detection and then backtracked until the
 Armijo condition holds. Constrained coordinates are eliminated from the
-linear system, so prescribed motions are satisfied exactly.
+linear system, so prescribed motions are satisfied exactly. They bypass the
+line search, so their straight path over each step goes through the same CCD
+instead, and a step that would carry a node into an obstacle is refused.
 """
 from __future__ import annotations
 
@@ -114,6 +116,9 @@ class Simulator:
 
         ``target`` is ``None`` (hold the current position), a ``(k, 3)`` array,
         or a callable ``t -> (k, 3)`` evaluated at the end of every step.
+        Each step moves the nodes along a straight line to the new target; if
+        that line enters an obstacle, :meth:`step` raises ``RuntimeError`` and
+        leaves the state unchanged.
         """
         nodes = np.asarray(nodes, dtype=np.int64)
         if target is None:
@@ -128,6 +133,23 @@ class Simulator:
             pos = np.asarray(target(t) if callable(target) else target, dtype=float)
             for a in axes:
                 x[nodes, a] = pos[:, a]
+
+    def _check_prescribed_path(self, x0: np.ndarray, x1: np.ndarray) -> None:
+        """Refuse prescribed motion whose straight path from ``x0`` to ``x1`` enters an obstacle.
+
+        Both ends can be outside an obstacle while the path between them is not
+        (a node carried through a sphere), so checking the targets alone is not enough.
+        """
+        nodes = self.contact.nodes[self.fixed[self.contact.nodes].any(axis=1)]
+        if len(nodes) == 0:
+            return
+        dx = x1[nodes] - x0[nodes]
+        for k, o in enumerate(self.contact.obstacles):
+            if o.max_step(x0[nodes], dx, shrink=1.0) <= 1.0:
+                raise RuntimeError(
+                    f"prescribed motion between t = {self.t:.6g} and t = {self.t + self.dt:.6g} carries a "
+                    f"node into obstacle {k} ({type(o).__name__}); use a smaller dt or a path that avoids it"
+                )
 
     # ------------------------------------------------------------ potential
     def energy(self, x: np.ndarray) -> float:
@@ -211,6 +233,7 @@ class Simulator:
         x_n = self.x.copy()
         x = x_n.copy()
         self._apply_constraints(x, self.t + h)
+        self._check_prescribed_path(x_n, x)
         if not self.quasistatic:
             self._x_tilde = x_n + h * self.v + h * h * self.gravity
             guess = np.where(self.fixed, 0.0, h * self.v)
